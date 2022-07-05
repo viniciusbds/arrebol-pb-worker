@@ -1,4 +1,9 @@
 /worker/keys/*
 /worker/worker-conf.json
-.idea
+.idea/
 .env
+*.pyc
+api/swagger.*
+go.sum
+main
+.certs/

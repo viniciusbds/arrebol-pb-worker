@@ -11,17 +11,17 @@ package utils
 import (
 	"context"
 	"fmt"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/client"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/client"
 )
 
 type ContainerConfig struct {
@@ -38,10 +38,10 @@ type ContainerConfig struct {
 //1. nil if the host pattern is invalid
 //2. a docker client otherwise
 func NewDockerClient(host string) *client.Client {
-	if err := os.Setenv("DOCKER_HOST", host); err != nil {
-		log.Print(err)
-		return nil
-	}
+	// if err := os.Setenv("DOCKER_HOST", host); err != nil {
+	// 	log.Print(err)
+	// 	return nil
+	// }
 	log.Println("Starting docker client in host: " + host)
 	cli, err := client.NewEnvClient()
 

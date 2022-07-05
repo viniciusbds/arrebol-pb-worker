@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/ufcg-lsd/arrebol-pb-worker/utils"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/dgrijalva/jwt-go"
+	uuid "github.com/satori/go.uuid"
+	"github.com/ufcg-lsd/arrebol-pb-worker/utils"
 )
 
 const (
@@ -27,18 +29,25 @@ const (
 //The QueueId can be SET during a join or in the worker's conf file.
 //The others are set in the conf file.
 type Worker struct {
+	Base
 	//The Vcpu available to the worker instance
 	Vcpu float32
 	//The Ram available to the worker instance (MegaBytes)ls
 
 	Ram uint32
+
+	//The queue from which the worker must ask for tasks
+	QueueID uint
+
 	//The Token that the server has been assigned to the worker
 	//so it is able to authenticate in next requests
 	Token string `json:"-"`
-	//The worker instance id
-	Id string
-	//The queue from which the worker must ask for tasks
-	QueueId uint
+}
+type Base struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
 }
 
 const (
@@ -62,7 +71,7 @@ var (
 //This struct represents a task, the executable piece of the system.
 type Task struct {
 	// Sequence of unix command to be execute by the worker
-	Commands []string
+	Commands []*Command
 	// Period (in seconds) between report status from the worker to the server
 	ReportInterval int64
 	State          TaskState
@@ -70,7 +79,31 @@ type Task struct {
 	Progress int
 	// Docker image used to execute the task (e.g library/ubuntu:tag).
 	DockerImage string
-	Id          string
+	ID          uint
+}
+
+type Command struct {
+	ID         uint
+	TaskID     uint         `json:"TaskID"`
+	ExitCode   int8         `json:"ExitCode"`
+	RawCommand string       `json:"RawCommand"`
+	State      CommandState `json:"State"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	DeletedAt  *time.Time `sql:"index"`
+}
+
+type CommandState uint8
+
+const (
+	CmdNotStarted CommandState = iota
+	CmdRunning
+	CmdFinished
+	CmdFailed
+)
+
+func (cs CommandState) String() string {
+	return [...]string{"NotStarted", "Running", "Finished", "Failed"}[cs]
 }
 
 func (ts TaskState) String() string {
@@ -80,14 +113,14 @@ func (ts TaskState) String() string {
 func (w *Worker) Join(serverEndpoint string) {
 	headers := http.Header{}
 
-	publicKey, err := utils.GetBase64PubKey(w.Id)
+	publicKey, err := utils.GetBase64PubKey(w.ID.String())
 
 	if err != nil {
 		log.Fatal("Error on retrieving key as base64. " + err.Error())
 	}
 
 	headers.Set(PUBLIC_KEY, publicKey)
-	httpResponse, err := utils.Post(w.Id, w, headers, serverEndpoint+"/workers")
+	httpResponse, err := utils.Post(w.ID.String(), w, headers, serverEndpoint+"/workers")
 
 	if err != nil {
 		log.Fatal("Error on joining the server: " + err.Error())
@@ -127,22 +160,22 @@ func HandleJoinResponse(response *utils.HttpResponse, w *Worker) {
 	}
 
 	w.Token = token
-	w.QueueId = queueId.(uint)
+	w.QueueID = uint(queueId.(float64))
 }
 
 func (w *Worker) GetTask(serverEndPoint string) (*Task, error) {
 	log.Println("Starting GetTask routine")
 
-	if w.QueueId == 0 {
+	if w.QueueID == 0 {
 		return nil, errors.New("The QueueId must be set before getting a task")
 	}
 
-	url := serverEndPoint + "/workers/" + w.Id + "/queues/" + fmt.Sprint(w.QueueId) + "/tasks"
+	url := serverEndPoint + "/workers/" + w.ID.String() + "/queues/" + fmt.Sprint(w.QueueID) + "/tasks"
 
 	headers := http.Header{}
 	headers.Set("arrebol-worker-token", w.Token)
 
-	httpResp, err := utils.Get(w.Id, url, headers)
+	httpResp, err := utils.Get(w.ID.String(), url, headers)
 
 	if err != nil {
 		return nil, errors.New("Error on GET request: " + err.Error())
@@ -157,6 +190,8 @@ func (w *Worker) GetTask(serverEndPoint string) (*Task, error) {
 		return nil, errors.New("Error on unmarshalling the task: " + err.Error())
 	}
 
+	// task.ReportInterval = 1
+	// task.DockerImage = "docker.io/ubuntu:latest"
 	return &task, nil
 }
 
@@ -197,12 +232,12 @@ func (w *Worker) ExecTask(task *Task, serverEndPoint string) {
 
 func (w *Worker) sendTaskReport(task *Task, executor *TaskExecutor, serverEndPoint string) {
 	updateTaskProgress(task, executor)
-	url := serverEndPoint + "/workers/" + w.Id + "/queues/" + fmt.Sprint(w.QueueId) + "/tasks"
+	url := serverEndPoint + "/workers/" + w.ID.String() + "/queues/" + fmt.Sprint(w.QueueID) + "/tasks"
 
 	header := http.Header{}
 	header.Set("arrebol-worker-token", w.Token)
 
-	resp, err := utils.Put(w.Id, task, header, url)
+	resp, err := utils.Put(w.ID.String(), task, header, url)
 
 	if err != nil || resp.StatusCode != 200 {
 		log.Println("Error on reporting task: " + err.Error())

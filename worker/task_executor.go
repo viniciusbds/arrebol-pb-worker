@@ -11,14 +11,15 @@ package worker
 import (
 	"bytes"
 	"fmt"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/client"
-	"github.com/ufcg-lsd/arrebol-pb-worker/utils"
 	"log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/client"
+	"github.com/ufcg-lsd/arrebol-pb-worker/utils"
 )
 
 const (
@@ -36,7 +37,7 @@ func (e *TaskExecutor) Execute(task *Task, statesChanges chan<- TaskState) {
 	image := task.DockerImage
 
 	log.Println("Creating container with image: " + image)
-	containerName := task.Id + "-" + strconv.Itoa(time.Now().Second())
+	containerName := fmt.Sprintf("%v", task.ID) + "-" + strconv.Itoa(time.Now().Second())
 
 	config := utils.ContainerConfig{
 		Name:   containerName,
@@ -54,7 +55,7 @@ func (e *TaskExecutor) Execute(task *Task, statesChanges chan<- TaskState) {
 		statesChanges <- TaskFailed
 		return
 	}
-	if err := e.run(task.Id); err != nil {
+	if err := e.run(fmt.Sprintf("%v", task.ID)); err != nil {
 		log.Println(err)
 		statesChanges <- TaskFailed
 		return
@@ -66,6 +67,9 @@ func (e *TaskExecutor) Execute(task *Task, statesChanges chan<- TaskState) {
 
 func (e *TaskExecutor) init(config utils.ContainerConfig) error {
 	exists, err := utils.CheckImage(&e.Cli, config.Image)
+	if err != nil {
+		return err
+	}
 	if !exists {
 		if _, err = utils.Pull(&e.Cli, config.Image); err != nil {
 			return err
@@ -106,7 +110,10 @@ func (e *TaskExecutor) init(config utils.ContainerConfig) error {
 //2. nil if no error happened
 func (e *TaskExecutor) send(task *Task) error {
 	taskScriptFileName := "task-id.ts"
-	rawCmdsStr := task.Commands
+	rawCmdsStr := []string{}
+	for i := 0; i < len(task.Commands); i++ {
+		rawCmdsStr = append(rawCmdsStr, task.Commands[i].RawCommand)
+	}
 	err := utils.Write(&e.Cli, e.Cid, rawCmdsStr, "/arrebol/"+taskScriptFileName)
 	return err
 }

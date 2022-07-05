@@ -10,6 +10,11 @@ import (
 	"net/http"
 )
 
+type HTTPBody struct {
+	Worker    interface{}
+	Signature []byte
+}
+
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -41,17 +46,17 @@ func getSignature(payload interface{}, workerId string) []byte {
 	return signature
 }
 
-func AddSignature(workerId string, payload interface{}, headers http.Header) http.Header {
+func AddSignature(workerId string, payload interface{}, headers http.Header) (http.Header, []byte) {
 	signature := GetSignature(payload, workerId)
 	strSignature := fmt.Sprintf("%v", signature)
 	headers.Set(SIGNATURE_KEY_PATTERN, strSignature)
-	return headers
+	return headers, signature
 }
 
 func Post(workerId string, body interface{}, headers http.Header, endpoint string) (*HttpResponse, error) {
-	headers = AddSignature(workerId, body, headers)
+	headers, signature := AddSignature(workerId, body, headers)
 
-	requestBody, err := json.Marshal(body)
+	requestBody, err := json.Marshal(HTTPBody{Worker: body, Signature: signature})
 
 	if err != nil {
 		log.Fatal("Unable to marshal body")
@@ -81,7 +86,7 @@ func Post(workerId string, body interface{}, headers http.Header, endpoint strin
 }
 
 func Get(workerId string, endpoint string, header http.Header) (*HttpResponse, error) {
-	header = AddSignature(workerId, endpoint, header)
+	header, _ = AddSignature(workerId, endpoint, header)
 
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 
@@ -109,7 +114,7 @@ func Get(workerId string, endpoint string, header http.Header) (*HttpResponse, e
 }
 
 func Put(workerId string, body interface{}, headers http.Header, endpoint string) (*HttpResponse, error) {
-	headers = AddSignature(workerId, body, headers)
+	headers, _ = AddSignature(workerId, body, headers)
 
 	requestBody, err := json.Marshal(body)
 
