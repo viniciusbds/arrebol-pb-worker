@@ -1,11 +1,13 @@
 package main
 
 import (
+	"log"
+	"os"
+	"time"
+
 	"github.com/joho/godotenv"
 	"github.com/ufcg-lsd/arrebol-pb-worker/utils"
 	"github.com/ufcg-lsd/arrebol-pb-worker/worker"
-	"log"
-	"os"
 )
 
 const (
@@ -45,16 +47,18 @@ func startWorker() {
 	serverEndpoint := os.Getenv(ServerEndpointKey)
 
 	//before join the server, the worker must generate the keys
-	generateKeys(workerInstance.Id)
+	generateKeys(workerInstance.ID.String())
+
+	workerInstance.Join(serverEndpoint)
 
 	for {
 		task, err := workerInstance.GetTask(serverEndpoint)
-
+		time.Sleep(3 * time.Second)
 		if err != nil {
 			//it will force the worker to Join again, if the error has occurred because of
 			//authentication issues. This is a work arround while the system doesn't have
 			//its own Error module that will allow it to identify the error type.
-			workerInstance.Join(serverEndpoint)
+			// workerInstance.Join(serverEndpoint)
 			continue
 		}
 
