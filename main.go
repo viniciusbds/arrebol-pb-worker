@@ -59,6 +59,7 @@ func startWorker() {
 			//authentication issues. This is a work arround while the system doesn't have
 			//its own Error module that will allow it to identify the error type.
 			// workerInstance.Join(serverEndpoint)
+			workerInstance.Join(serverEndpoint)
 			continue
 		}
 
